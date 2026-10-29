@@ -16,6 +16,7 @@ import {
   MockShellNotFound,
   MockUnauthorized,
   MockUnsupported,
+  MockWorktreeError,
 } from "./mock-api"
 import { installSseTransport } from "./sse-transport"
 
@@ -125,6 +126,8 @@ export interface MockServerConfig {
   // and return the answer; by default it creates `<directory>/<name>`. A created directory joins the project's sandboxes.
   onWorktreeCreate?: (input: Schema.Json) => void | MockAnswer | Promise<void | MockAnswer>
   onWorktreeRemove?: (input: Worktree.RemoveInput) => void | Promise<void>
+  // Return an error to fail the removal before `onWorktreeRemove` runs.
+  onWorktreeRemoveFailure?: (input: Worktree.RemoveInput) => MockWorktreeError | undefined
   // POST /api/session keeps the client-reserved `id` and `location`. Return an answer to fail the attempt (1-based).
   onSessionCreate?: (body: Schema.JsonObject, attempt: number) => void | MockAnswer
   // Title of created sessions (default: the request's title, else "New session").
@@ -1020,6 +1023,10 @@ function mockHandlers(
           const remove = config.onWorktreeRemove
 
           if (!remove) return unsupported("remove worktrees", "onWorktreeRemove")
+
+          const failure = config.onWorktreeRemoveFailure?.(ctx.payload)
+
+          if (failure) return Effect.fail(failure)
 
           return Effect.promise(async () => remove(ctx.payload)).pipe(Effect.andThen(noContent))
         },
